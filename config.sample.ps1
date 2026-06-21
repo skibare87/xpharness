@@ -3,8 +3,17 @@
 
 $Config = @{
     ApiKey    = "sk-ant-REPLACE-ME"
-    Model     = "claude-sonnet-4-6"
+    # Default model: a shortcut (sonnet/haiku/opus/local/local-110m/local-tl) or a literal model ID.
+    Model     = "sonnet"
     BaseUrl   = "https://api.anthropic.com/v1/messages"
+
+    # /models shortcut -> real model ID. Edit to pin a dated version or remap a
+    # class; add your own shortcuts too. Omit to use the harness built-in defaults.
+    Models = @{
+        sonnet = "claude-sonnet-4-6"
+        haiku  = "claude-haiku-4-5-20251001"
+        opus   = "claude-opus-4-8"
+    }
     Version   = "2023-06-01"
     MaxTokens = 4096
 

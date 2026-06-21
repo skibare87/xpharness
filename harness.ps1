@@ -1079,14 +1079,24 @@ function Run-Turn($messages) {
 # =====================================================================
 #  SLASH COMMANDS
 # =====================================================================
+# API model shortcuts -> real model IDs. These defaults can be overridden or
+# extended by a $Config.Models hashtable in config.ps1 (pin a dated version,
+# remap a class, add a new shortcut) without touching the harness.
 $Models = @{
-    sonnet       = "claude-sonnet-4-6"
-    haiku        = "claude-haiku-4-5-20251001"
-    opus         = "claude-opus-4-8"
-    local        = "local"           # TinyStories 15M  (fast toy)
-    "local-110m" = "local-110m"      # TinyStories 110M (better toy)
-    "local-tl"   = "local-tl"        # TinyLlama 1.1B Chat int8 (smart, slow)
+    sonnet = "claude-sonnet-4-6"
+    haiku  = "claude-haiku-4-5-20251001"
+    opus   = "claude-opus-4-8"
 }
+if ($Config.Models -is [System.Collections.IDictionary]) {
+    foreach ($k in $Config.Models.Keys) { $Models["$k"] = [string]$Config.Models[$k] }
+}
+# offline model shortcuts (resolved via $LocalModels below)
+$Models["local"]      = "local"      # TinyStories 15M  (fast toy)
+$Models["local-110m"] = "local-110m" # TinyStories 110M (better toy)
+$Models["local-tl"]   = "local-tl"   # TinyLlama 1.1B Chat int8 (smart, slow)
+
+# the default model in config may be a shortcut (sonnet/opus/local-tl/...) or a literal ID
+if ($Models.ContainsKey([string]$Config.Model)) { $Config.Model = $Models[[string]$Config.Model] }
 
 # Offline models run via llama2.c (no tools). Paths resolve against the script
 # dir. 'template' wraps the user prompt ({prompt} placeholder) for chat-tuned
