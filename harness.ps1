@@ -918,20 +918,84 @@ function Send-ToLocal($messages) {
     $psi.RedirectStandardOutput = $true
     $psi.CreateNoWindow = $true
 
+    # llama2.c echoes the prompt as it ingests it and only stops on BOS. For a
+    # chat model that means it prints the template (<|user|>..<|assistant|>) and,
+    # after answering, keeps going into a hallucinated next turn. So for templated
+    # models we (1) suppress output until the 'start' marker, and (2) stop at the
+    # first 'stop' marker (e.g. </s>), killing the process early.
+    $start = [string]$spec["start"]          # "" = print from the beginning
+    $stops = $spec["stops"]                   # array of strings, or $null
+    $maxStop = 0
+    if ($stops) { foreach ($s in $stops) { if ($s.Length -gt $maxStop) { $maxStop = $s.Length } } }
+
     $p = [System.Diagnostics.Process]::Start($psi)
+    $script:LocalProc = $p          # tracked so Ctrl-C / exit can kill it
     $reader = New-Object System.IO.StreamReader($p.StandardOutput.BaseStream, (New-Object System.Text.UTF8Encoding($false)))
     Write-Host ""
-    $sb = New-Object System.Text.StringBuilder
+
+    $full = New-Object System.Text.StringBuilder   # everything (used to find start)
+    $ans  = New-Object System.Text.StringBuilder   # text after the start marker
+    $started = ($start -eq "")
+    $printed = 0
+    $stopped = $false
+
     while ($true) {
-        $ch = $reader.Read()
-        if ($ch -lt 0) { break }
-        $c = [char]$ch
-        [void]$sb.Append($c)
-        Write-Host (Format-ForConsole ([string]$c)) -NoNewline -ForegroundColor Cyan
+        # let Ctrl-C cancel a slow generation (and kill the child) mid-stream
+        if ($UseRawInput) {
+            try {
+                if ([Console]::KeyAvailable) {
+                    $k = [Console]::ReadKey($true)
+                    if ($k.Key -eq [ConsoleKey]::C -and ($k.Modifiers -band [ConsoleModifiers]::Control)) {
+                        try { $p.Kill() } catch {}
+                        Write-Host "`n(cancelled)" -ForegroundColor DarkGray
+                        $stopped = $true; break
+                    }
+                }
+            } catch {}
+        }
+        $ci = $reader.Read()
+        if ($ci -lt 0) { break }
+        $c = [char]$ci
+        if (-not $started) {
+            [void]$full.Append($c)
+            $fs = $full.ToString()
+            $si = $fs.IndexOf($start)
+            if ($si -ge 0) {
+                $started = $true
+                [void]$ans.Append($fs.Substring($si + $start.Length).TrimStart("`r", "`n"))
+            }
+            continue
+        }
+        [void]$ans.Append($c)
+        $a = $ans.ToString()
+        if ($stops) {
+            $cut = -1
+            foreach ($s in $stops) { $idx = $a.IndexOf($s); if ($idx -ge 0 -and ($cut -lt 0 -or $idx -lt $cut)) { $cut = $idx } }
+            if ($cut -ge 0) {
+                if ($cut -gt $printed) { Write-Host (Format-ForConsole $a.Substring($printed, $cut - $printed)) -NoNewline -ForegroundColor Cyan }
+                $ans = New-Object System.Text.StringBuilder
+                [void]$ans.Append($a.Substring(0, $cut))
+                $stopped = $true
+                try { $p.Kill() } catch {}
+                break
+            }
+        }
+        # print up to (len - maxStop) so a partial stop marker is never shown
+        $safe = $a.Length - $maxStop
+        if ($safe -gt $printed) {
+            Write-Host (Format-ForConsole $a.Substring($printed, $safe - $printed)) -NoNewline -ForegroundColor Cyan
+            $printed = $safe
+        }
     }
-    $p.WaitForExit()
+    if (-not $stopped) {
+        $p.WaitForExit()
+        if (-not $started) { [void]$ans.Append($full.ToString()) }   # marker never appeared - show raw
+        $a = $ans.ToString()
+        if ($a.Length -gt $printed) { Write-Host (Format-ForConsole $a.Substring($printed)) -NoNewline -ForegroundColor Cyan }
+    }
+    $script:LocalProc = $null
     Write-Host ""
-    return @{ content = @(@{ type = "text"; text = $sb.ToString() }); stop_reason = "end_turn" }
+    return @{ content = @(@{ type = "text"; text = $ans.ToString().Trim() }); stop_reason = "end_turn" }
 }
 
 # =====================================================================
@@ -1030,7 +1094,7 @@ $Models = @{
 $LocalModels = @{
     "local"      = @{ exe = "llm\run.exe";  bin = "llm\stories15M.bin";   tok = "llm\tokenizer.bin"; steps = 256; temp = 0.9; template = "" }
     "local-110m" = @{ exe = "llm\run.exe";  bin = "llm\stories110M.bin";  tok = "llm\tokenizer.bin"; steps = 256; temp = 0.9; template = "" }
-    "local-tl"   = @{ exe = "llm\runq.exe"; bin = "llm\tinyllama-q8.bin"; tok = "llm\tokenizer.bin"; steps = 512; temp = 0.7; template = "<|user|>`n{prompt}</s>`n<|assistant|>`n" }
+    "local-tl"   = @{ exe = "llm\runq.exe"; bin = "llm\tinyllama-q8.bin"; tok = "llm\tokenizer.bin"; steps = 512; temp = 0.7; template = "<|user|>`n{prompt}</s>`n<|assistant|>`n"; start = "<|assistant|>"; stops = @("</s>", "<|user|>") }
 }
 
 function Show-Totals {
@@ -1180,6 +1244,28 @@ function Get-ClipboardText {
     } catch { return "" }
 }
 
+# Line reader that surfaces Ctrl-C (returns "__CTRLC__") instead of killing the
+# script. Needs [Console]::TreatControlCAsInput = $true. Handles typing,
+# Backspace, and Enter; ignores arrows/function keys.
+function Read-Prompt {
+    $buf = New-Object System.Text.StringBuilder
+    while ($true) {
+        $key = [Console]::ReadKey($true)
+        if ($key.Key -eq [ConsoleKey]::C -and ($key.Modifiers -band [ConsoleModifiers]::Control)) {
+            return "__CTRLC__"
+        }
+        if ($key.Key -eq [ConsoleKey]::Enter) { Write-Host ""; break }
+        elseif ($key.Key -eq [ConsoleKey]::Backspace) {
+            if ($buf.Length -gt 0) { [void]$buf.Remove($buf.Length - 1, 1); Write-Host "`b `b" -NoNewline }
+        }
+        elseif ($key.KeyChar -and ([int][char]$key.KeyChar) -ge 32) {
+            [void]$buf.Append($key.KeyChar)
+            Write-Host ([string]$key.KeyChar) -NoNewline
+        }
+    }
+    return $buf.ToString()
+}
+
 # =====================================================================
 #  REPL
 # =====================================================================
@@ -1194,13 +1280,31 @@ Write-Host ""
 Write-Host "It looks like you're coding on Windows XP. Want some help?" -ForegroundColor $BannerColor
 Write-Host "ready. Model: $($Config.Model)" -ForegroundColor Green
 Write-Host "cwd: $((Get-Location).Path)" -ForegroundColor DarkGray
-Write-Host "Type a request, /help for commands, or 'exit' to quit." -ForegroundColor Green
+Write-Host "Type a request, /help for commands, Ctrl-C or 'exit' to quit." -ForegroundColor Green
+
+# Ctrl-C handling: catch it as input (so it cancels a running model instead of
+# nuking the harness) and require two presses at the prompt to exit.
+$UseRawInput = $true
+try { [Console]::TreatControlCAsInput = $true } catch { $UseRawInput = $false }
+$script:LocalProc = $null
+$ctrlcArmed = $false
 
 $messages = New-Object System.Collections.ArrayList
+try {
 while ($true) {
     Write-Host ""
     Write-Host ("[" + (Get-Location).Path + "]") -ForegroundColor DarkGray
-    $userInput = Read-Host "you"
+    Write-Host "you: " -NoNewline -ForegroundColor Green
+    if ($UseRawInput) { $userInput = Read-Prompt } else { $userInput = Read-Host }
+
+    if ($userInput -eq "__CTRLC__") {
+        if ($ctrlcArmed) { Write-Host ""; break }
+        $ctrlcArmed = $true
+        Write-Host "(press Ctrl-C again to exit, or type a command)" -ForegroundColor DarkGray
+        continue
+    }
+    $ctrlcArmed = $false
+
     if ($userInput -eq "exit" -or $userInput -eq "quit") { break }
     if (-not $userInput) { continue }
     if ($userInput -eq "/paste") {
@@ -1229,5 +1333,10 @@ while ($true) {
     } catch {
         Write-Host "turn failed: $($_.Exception.Message)" -ForegroundColor Red
     }
+}
+} finally {
+    # never leave a spawned local model running
+    if ($script:LocalProc -and -not $script:LocalProc.HasExited) { try { $script:LocalProc.Kill() } catch {} }
+    try { [Console]::TreatControlCAsInput = $false } catch {}
 }
 Write-Host "bye." -ForegroundColor Green
