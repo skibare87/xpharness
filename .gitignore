@@ -1,0 +1,18 @@
+# --- secrets (NEVER commit) ---
+config.ps1
+
+# --- downloaded/built binaries & models (run setup.sh to fetch/build) ---
+bin/curl.exe
+bin/cacert.pem
+tools/tcc/
+llm/*.bin
+llm/run.exe
+llm/runq.exe
+llm/__pycache__/
+llm/export.log
+
+# --- runtime artifacts ---
+*.bak
+xph_session.json
+xph_transcript.txt
+*.tmp
