@@ -30,6 +30,9 @@ powershell -ExecutionPolicy Bypass -File test-curl.ps1 sk-ant-...   :: prove TLS
 powershell -ExecutionPolicy Bypass -File harness.ps1                :: launch
 ```
 
+…or just **double-click `xpharness.bat`** (it sets the working directory and
+launches the harness for you).
+
 ### Demo
 
 Launch greets you with a banner and a familiar paperclip:
@@ -119,6 +122,7 @@ folder to the XP box. Licenses for the fetched components: see
 ```
 xpharness\
   harness.ps1
+  xpharness.bat       (double-click launcher)
   extras.ps1          (retro flair: banner + image_to_ascii)
   test-curl.ps1       (step-1 TLS check)
   config.sample.ps1
