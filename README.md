@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/Ccxp-final.png" alt="Claude Code XP - clippy edition" width="480">
+</p>
+
 # xpharness
 
 A tiny agentic coding harness — a stripped-down Claude Code — that runs in
@@ -31,7 +35,9 @@ powershell -ExecutionPolicy Bypass -File harness.ps1                :: launch
 ```
 
 …or just **double-click `xpharness.bat`** (it sets the working directory and
-launches the harness for you).
+launches the harness for you). Want the Clippy icon on it? Make a desktop
+shortcut to `xpharness.bat`, then Properties → Change Icon → browse to
+`images\clippy-xp.ico`.
 
 ### Demo
 
