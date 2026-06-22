@@ -12,11 +12,9 @@ $ErrorActionPreference = "Stop"
 
 # --- locate ourselves (PS2 has no $PSScriptRoot) -----------------------
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $ScriptDir
-# Keep .NET's idea of the working dir in sync with PowerShell's location, so
-# [IO.File] (read/write/edit_file) and child processes (run_command) resolve
-# relative paths the same way Get-ChildItem (list_dir/grep/find) does.
-[Environment]::CurrentDirectory = (Get-Location).Path
+# NOTE: $ScriptDir is only used to LOCATE bundled files (config, curl, tcc,
+# models via Resolve-Rel). The working directory is chosen separately below so
+# the harness still works when it lives on read-only media (CD/DVD).
 
 # --- load config -------------------------------------------------------
 $cfgPath = Join-Path $ScriptDir "config.ps1"
@@ -25,6 +23,26 @@ if (-not (Test-Path $cfgPath)) {
     exit 1
 }
 . $cfgPath
+
+# --- working directory (must be writable so file tools / sessions work even
+#     when the harness runs from a CD/DVD) --------------------------------
+function Test-DirWritable($dir) {
+    if (-not $dir) { return $false }
+    try {
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+        $t = Join-Path $dir ("xphw_" + [System.IO.Path]::GetRandomFileName())
+        [IO.File]::WriteAllText($t, "x"); Remove-Item $t -Force
+        return $true
+    } catch { return $false }
+}
+if     ($Config.WorkDir -and (Test-DirWritable $Config.WorkDir)) { $workDir = $Config.WorkDir }
+elseif (Test-DirWritable $ScriptDir)        { $workDir = $ScriptDir }       # HDD install
+elseif (Test-DirWritable $env:USERPROFILE)  { $workDir = $env:USERPROFILE } # read-only media -> home
+else                                        { $workDir = $env:TEMP }
+Set-Location $workDir
+# keep .NET's cwd in sync with PowerShell's location (so [IO.File] + child
+# processes resolve relative paths the same way Get-ChildItem does)
+[Environment]::CurrentDirectory = (Get-Location).Path
 
 # resolve relative tool paths against the script dir
 function Resolve-Rel($p) {

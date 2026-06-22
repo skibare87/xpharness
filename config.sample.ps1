@@ -48,6 +48,11 @@ $Config = @{
     # Safety: ask before running shell commands / writing files.
     Confirm   = $true
 
+    # Working directory for the agent's file tools and saved sessions. Leave
+    # blank to auto-pick (the harness folder if writable, else your home folder)
+    # - handy when running from read-only media like a CD/DVD. Set a path to pin it.
+    WorkDir   = ""
+
     # Down-convert non-ASCII (em-dashes, smart quotes, emoji) to ASCII for
     # display, since the XP console can't render them. The real UTF-8 still
     # goes to/from the API. Set $false if you have a Unicode-capable console.
