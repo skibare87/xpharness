@@ -123,6 +123,20 @@ Then `copy config.sample.ps1 config.ps1`, add your API key, and SFTP the whole
 folder to the XP box. Licenses for the fetched components: see
 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
+### Burn it to a DVD (optional)
+
+```
+./make-iso.sh    # -> xpharness.iso (full bundle is ~1.6GB, needs a DVD)
+```
+
+The ISO ships an `autorun.inf` so the disc shows the Clippy icon and
+double-clicking the drive launches the harness. Your `config.ps1` is **not**
+included — on the XP box, put it at `%USERPROFILE%\xpharness\config.ps1` (the
+harness looks there when running from read-only media). Burn the `.iso` as a
+disc image (ImgBurn on XP, or "Burn disc image" on Win7+), not as a file copy.
+The big `local-tl` model is slow off optical media — copy `llm\` to the HDD if
+you want to use it.
+
 ## Setup
 
 ```

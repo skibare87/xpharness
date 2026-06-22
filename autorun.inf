@@ -1,0 +1,6 @@
+[autorun]
+icon=clippy-xp.ico
+label=CLIPPY-XP
+shell\launch\command=xpharness.bat
+shell\launch=Launch CLIPPY-XP
+shell=launch

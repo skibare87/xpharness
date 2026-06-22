@@ -16,3 +16,4 @@ llm/export.log
 xph_session.json
 xph_transcript.txt
 *.tmp
+*.iso

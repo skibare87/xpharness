@@ -19,7 +19,15 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # --- load config -------------------------------------------------------
 $cfgPath = Join-Path $ScriptDir "config.ps1"
 if (-not (Test-Path $cfgPath)) {
-    Write-Host "No config.ps1 found. Copy config.sample.ps1 to config.ps1 and add your API key." -ForegroundColor Red
+    # running from read-only media (CD/DVD)? look in the user's home folder so
+    # the disc doesn't have to carry your API key.
+    $altCfg = Join-Path $env:USERPROFILE "xpharness\config.ps1"
+    if (Test-Path $altCfg) { $cfgPath = $altCfg }
+}
+if (-not (Test-Path $cfgPath)) {
+    Write-Host "No config.ps1 found. Put it next to harness.ps1, or at" -ForegroundColor Red
+    Write-Host "  %USERPROFILE%\xpharness\config.ps1" -ForegroundColor Red
+    Write-Host "(copy config.sample.ps1 and add your API key)." -ForegroundColor Red
     exit 1
 }
 . $cfgPath
